@@ -1,0 +1,47 @@
+import requests
+import pandas as pd
+import ccxt
+import yfinance as yf
+
+# Fetch Real-time Data from Binance API
+binance = ccxt.binance()
+symbol = "BTC/USDT"
+ticker = binance.fetch_ticker(symbol)
+binance_data = {
+    "symbol": symbol,
+    "timestamp": pd.to_datetime(ticker["timestamp"], unit="ms"),
+    "price": ticker["last"],
+    "high": ticker["high"],
+    "low": ticker["low"],
+    "volume": ticker["baseVolume"]
+}
+print("Binance Real-Time Data:", binance_data)
+
+# Fetch Historical Data from CoinGecko API
+coin = "bitcoin"
+days = 30
+url = f"https://api.coingecko.com/api/v3/coins/{coin}/market_chart"
+params = {"vs_currency": "usd", "days": days, "interval": "daily"}
+response = requests.get(url, params=params)
+
+if response.status_code == 200:
+    data = response.json()
+    coingecko_prices = [{"timestamp": pd.to_datetime(p[0], unit="ms"), "price": p[1]} for p in data["prices"]]
+    coingecko_df = pd.DataFrame(coingecko_prices)
+
+    if not coingecko_df.empty:
+        coingecko_df.to_csv("coingecko_data.csv", index=False)
+        print("CoinGecko data saved to coingecko_data.csv")
+else:
+    print("Error fetching CoinGecko data:", response.status_code)
+
+# Fetch Market Data from Yahoo Finance
+ticker = "BTC-USD"
+period = "1mo"
+interval = "1d"
+yahoo_df = yf.download(ticker, period=period, interval=interval)
+
+if not yahoo_df.empty:
+    yahoo_df.reset_index(inplace=True)
+    yahoo_df.to_csv("yahoo_data.csv", index=False)
+    print("Yahoo Finance data saved to yahoo_data.csv")
