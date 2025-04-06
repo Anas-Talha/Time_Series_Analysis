@@ -1,0 +1,100 @@
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+from prophet import Prophet
+from arch import arch_model
+
+plt.style.use("dark_background")
+
+# Streamlit App Title
+st.title("Time Series Forecasting & Analysis")
+
+# Step 1: File Upload
+uploaded_file = st.file_uploader("Upload your time series data (CSV)", type=["csv"])
+
+if uploaded_file:
+    # Load data
+    df = pd.read_csv(uploaded_file)
+
+    columns = df.columns.str.lower()
+
+    # Check required columns
+    required_columns = {'timestamp', 'price', 'high', 'low', 'open', 'volume'}
+    if required_columns.issubset(columns):
+        # Rename columns for consistency
+        df = df.rename(columns={
+            'timestamp': 'Date',
+            'price': 'Price',
+            'High': 'Highest Price',
+            'Low': 'Lowest Price',
+            'Open': 'Opening Price',
+            'Volume': 'Trading Volume'
+        })
+        df['Date'] = pd.to_datetime(df['Date'])
+        df.set_index('Date', inplace=True)
+
+        # Remove missing values automatically
+        df.dropna(inplace=True)
+
+        # Display latest available price
+        latest_date = df.index.max()
+        latest_price = df.loc[latest_date, 'Price']
+        if isinstance(latest_price, pd.Series):
+            latest_price = latest_price.iloc[0]
+        st.metric(label="Latest Available Price", value=f"{latest_price:.2f}")
+
+        # Data Preview
+        st.write("Data Preview:")
+        st.write(df.head())
+
+        # Step 2: Model Selection
+        model_choice = st.selectbox("Select Model", ("Prophet", "GARCH"))
+
+        # Step 3: Select Forecast Period
+        prediction_period = st.slider("Select Forecast Period (days)", min_value=1, max_value=365, value=30)
+
+        # Step 4: Train Model
+        if st.button("Train Model"):
+            if model_choice == "Prophet":
+                st.write("Training Prophet model...")
+
+                # Prepare data for Prophet
+                prophet_df = df.reset_index().rename(columns={'Date': 'ds', 'Price': 'y'})
+                model = Prophet(weekly_seasonality=True, yearly_seasonality=True)
+                model.fit(prophet_df)
+
+                # Make future predictions
+                future = model.make_future_dataframe(periods=prediction_period)
+                forecast = model.predict(future)
+
+                # Plot actual data vs forecast
+                fig1, ax1 = plt.subplots(figsize=(10, 6))
+                ax1.plot(df.index, df['Price'], label="Actual Data", color='blue')
+                ax1.plot(forecast['ds'], forecast['yhat'], label="Forecast", color='red')
+                ax1.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'],
+                                 color='yellow', alpha=0.2, label="Confidence Interval")
+                ax1.legend()
+                ax1.grid(True)
+                st.pyplot(fig1)
+
+                # Additional Prophet visualization: Trend & Seasonality
+                fig2 = model.plot_components(forecast)
+                st.pyplot(fig2)
+
+            elif model_choice == "GARCH":
+
+
+                st.write("Estimating Volatility using GARCH Model...")
+                model = arch_model(df['Price'], vol='Garch', p=1, q=1)
+                result = model.fit(disp="off")
+                df['Volatility'] = result.conditional_volatility
+
+                # Plot Volatility
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.plot(df.index, df['Volatility'], label="Estimated Volatility", color='red')
+                ax.legend()
+                ax.grid(True)
+                st.pyplot(fig)
+
+    else:
+        st.error("The dataset must include the required columns.")
